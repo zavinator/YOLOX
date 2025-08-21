@@ -162,7 +162,7 @@ class CacheDataset(Dataset, metaclass=ABCMeta):
             self.cache_dir = os.path.join(data_dir, cache_dir_name)
             self.path_filename = path_filename
 
-        if self.cache and self.cache_type == "ram":
+        if self.cache:
             self.imgs = None
 
         if self.cache:

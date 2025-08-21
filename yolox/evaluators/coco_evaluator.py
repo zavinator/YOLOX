@@ -281,16 +281,7 @@ class COCOEvaluator:
 
         # Evaluate the Dt (detection) json comparing with the ground truth
         if len(data_dict) > 0:
-            cocoGt = self.dataloader.dataset.coco
-            #HACK
-            cocoGt.dataset["info"] = {
-                "description": "Custom",
-                "version": "1.0",
-                "year": 2025,
-                "contributor": "",
-                "date_created": "2025-08-06"
-            }
-                    
+            cocoGt = self.dataloader.dataset.coco            
             # TODO: since pycocotools can't process dict in py36, write data to json file.
             if self.testdev:
                 json.dump(data_dict, open("./yolox_testdev_2017.json", "w"))
@@ -299,15 +290,12 @@ class COCOEvaluator:
                 _, tmp = tempfile.mkstemp()
                 json.dump(data_dict, open(tmp, "w"))
                 cocoDt = cocoGt.loadRes(tmp)
-            #try:
-            #    from yolox.layers import COCOeval_opt as COCOeval
-            #except ImportError:
-            #    from pycocotools.cocoeval import COCOeval
+            try:
+                from yolox.layers import COCOeval_opt as COCOeval
+            except ImportError:
+                from pycocotools.cocoeval import COCOeval
 
-            #    logger.warning("Use standard COCOeval.")
-            #TODO
-            from pycocotools.cocoeval import COCOeval
-            logger.warning("Use standard COCOeval.")
+                logger.warning("Use standard COCOeval.")
 
             cocoEval = COCOeval(cocoGt, cocoDt, annType[1])
             cocoEval.evaluate()

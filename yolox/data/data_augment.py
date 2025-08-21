@@ -17,18 +17,46 @@ import numpy as np
 
 from yolox.utils import xyxy2cxcywh
 
+U8_TO_U16_SCALE = 65535 // 255
 
 def augment_hsv(img, hgain=5, sgain=30, vgain=30):
+    if len(img.shape) == 2:
+        return  # No augmentation for grayscale images
+    
+    dtype = img.dtype
+    sv_max = 255
+    gain_scale = 1
+    if dtype == np.uint16:
+        sv_max = 65535
+        gain_scale = U8_TO_U16_SCALE # Scale S and V gains for 16-bit range (255 -> 65535)
+    
     hsv_augs = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain]  # random gains
+    hsv_augs[1:] *= gain_scale
     hsv_augs *= np.random.randint(0, 2, 3)  # random selection of h, s, v
-    hsv_augs = hsv_augs.astype(np.int16)
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
 
     img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 180
-    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, 255)
-    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, 255)
+    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, sv_max)
+    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, sv_max)
+    
+    cv2.cvtColor(img_hsv.astype(dtype), cv2.COLOR_HSV2BGR, dst=img)
 
-    cv2.cvtColor(img_hsv.astype(img.dtype), cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+
+def augment_brightness_contrast(img, bgain=32, cgain=0.2):
+    """Random brightness/contrast: (brightness + pixel) * contrast."""
+    dtype = img.dtype
+    max_val = 255
+    gain_scale = 1
+    if dtype == np.uint16:
+        max_val = 65535
+        gain_scale = U8_TO_U16_SCALE
+    
+    b_delta = np.random.uniform(-bgain, bgain) * gain_scale
+    c_delta = np.random.uniform(1.0 - cgain, 1.0 + cgain)
+
+    img_aug = (img.astype(np.float32) + b_delta) * c_delta
+    np.clip(img_aug, 0.0, max_val, out=img_aug)
+    img[:] = img_aug.astype(dtype)
 
 
 def get_aug_params(value, center=0):
@@ -122,7 +150,8 @@ def random_affine(
 ):
     M, scale = get_affine_matrix(target_size, degrees, translate, scales, shear)
 
-    img = cv2.warpAffine(img, M, dsize=target_size, borderValue=(114, 114, 114))
+    value = 114 * U8_TO_U16_SCALE if img.dtype == np.uint16 else 114
+    img = cv2.warpAffine(img, M, dsize=target_size, borderValue=(value, value, value))
 
     # Transform label coordinates
     if len(targets) > 0:
@@ -131,8 +160,9 @@ def random_affine(
     return img, targets
 
 
+
 def _mirror(image, boxes, prob=0.5):
-    _, width, _ = image.shape
+    _, width = image.shape[:2]
     if random.random() < prob:
         image = image[:, ::-1]
         boxes[:, 0::2] = width - boxes[:, 2::-2]
@@ -140,29 +170,49 @@ def _mirror(image, boxes, prob=0.5):
 
 
 def preproc(img, input_size, swap=(2, 0, 1)):
+    dtype = img.dtype
+    value = 114 * U8_TO_U16_SCALE if dtype == np.uint16 else 114
+        
     if len(img.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=dtype) * value
     else:
-        padded_img = np.ones(input_size, dtype=np.uint8) * 114
+        padded_img = np.ones(input_size, dtype=dtype) * value
 
     r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
     resized_img = cv2.resize(
         img,
         (int(img.shape[1] * r), int(img.shape[0] * r)),
         interpolation=cv2.INTER_LINEAR,
-    ).astype(np.uint8)
+    )
     padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+    if padded_img.ndim == 2:
+        padded_img = cv2.cvtColor(padded_img, cv2.COLOR_GRAY2BGR)
 
     padded_img = padded_img.transpose(swap)
+    
+    if dtype == np.uint16:
+        padded_img = padded_img.astype(np.float32) / U8_TO_U16_SCALE # Normalize to [0,255] for float32
     padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
     return padded_img, r
 
 
+
 class TrainTransform:
-    def __init__(self, max_labels=50, flip_prob=0.5, hsv_prob=1.0):
+    def __init__(
+        self,
+        max_labels=50,
+        flip_prob=0.5,
+        hsv_prob=1.0,
+        bc_prob=1.0,
+        bgain=32,
+        cgain=0.2,
+    ):
         self.max_labels = max_labels
         self.flip_prob = flip_prob
         self.hsv_prob = hsv_prob
+        self.bc_prob = bc_prob
+        self.bgain = bgain
+        self.cgain = cgain
 
     def __call__(self, image, targets, input_dim):
         boxes = targets[:, :4].copy()
@@ -174,7 +224,7 @@ class TrainTransform:
 
         image_o = image.copy()
         targets_o = targets.copy()
-        height_o, width_o, _ = image_o.shape
+        #height_o, width_o, _ = image_o.shape
         boxes_o = targets_o[:, :4]
         labels_o = targets_o[:, 4]
         # bbox_o: [xyxy] to [c_x,c_y,w,h]
@@ -182,8 +232,12 @@ class TrainTransform:
 
         if random.random() < self.hsv_prob:
             augment_hsv(image)
+
+        if random.random() < self.bc_prob:
+            augment_brightness_contrast(image, self.bgain, self.cgain)
+
         image_t, boxes = _mirror(image, boxes, self.flip_prob)
-        height, width, _ = image_t.shape
+        #height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim)
         # boxes [xyxy] 2 [cx,cy,w,h]
         boxes = xyxy2cxcywh(boxes)
@@ -236,8 +290,5 @@ class ValTransform:
     def __call__(self, img, res, input_size):
         img, _ = preproc(img, input_size, self.swap)
         if self.legacy:
-            img = img[::-1, :, :].copy()
-            img /= 255.0
-            img -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
-            img /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
+            raise NotImplementedError("Legacy preprocessing is not supported.")
         return img, np.zeros((1, 5))

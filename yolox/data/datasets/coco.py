@@ -10,6 +10,7 @@ from pycocotools.coco import COCO
 
 from ..dataloading import get_yolox_datadir
 from .datasets_wrapper import CacheDataset, cache_read_img
+from yolox.utils import image
 
 
 def remove_useless_info(coco):
@@ -19,7 +20,6 @@ def remove_useless_info(coco):
     """
     if isinstance(coco, COCO):
         dataset = coco.dataset
-        dataset.pop("info", None)
         dataset.pop("licenses", None)
         for img in dataset["images"]:
             img.pop("license", None)
@@ -137,7 +137,8 @@ class COCODataset(CacheDataset):
             img,
             (int(img.shape[1] * r), int(img.shape[0] * r)),
             interpolation=cv2.INTER_LINEAR,
-        ).astype(np.uint8)
+        )
+
         return resized_img
 
     def load_image(self, index):
@@ -145,7 +146,7 @@ class COCODataset(CacheDataset):
 
         img_file = os.path.join(self.data_dir, self.name, file_name)
 
-        img = cv2.imread(img_file)
+        img = image.read(img_file)
         assert img is not None, f"file named {img_file} not found"
 
         return img
