@@ -186,7 +186,7 @@ def _pad_to_largest_tensor(tensor, group):
     # gathering tensors of different shapes
     if local_size != max_size:
         padding = torch.zeros(
-            (max_size - local_size,), dtype=torch.uint8, device=tensor.device
+            (max_size - local_size,), dtype=torch.float32, device=tensor.device
         )
         tensor = torch.cat((tensor, padding), dim=0)
     return size_list, tensor
@@ -217,7 +217,7 @@ def all_gather(data, group=None):
 
     # receiving Tensor from all ranks
     tensor_list = [
-        torch.empty((max_size,), dtype=torch.uint8, device=tensor.device)
+        torch.empty((max_size,), dtype=torch.float32, device=tensor.device)
         for _ in size_list
     ]
     dist.all_gather(tensor_list, tensor, group=group)
@@ -259,7 +259,7 @@ def gather(data, dst=0, group=None):
     if rank == dst:
         max_size = max(size_list)
         tensor_list = [
-            torch.empty((max_size,), dtype=torch.uint8, device=tensor.device)
+            torch.empty((max_size,), dtype=torch.float32, device=tensor.device)
             for _ in size_list
         ]
         dist.gather(tensor, tensor_list, dst=dst, group=group)

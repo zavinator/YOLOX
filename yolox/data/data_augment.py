@@ -21,14 +21,17 @@ from yolox.utils import xyxy2cxcywh
 def augment_hsv(img, hgain=5, sgain=30, vgain=30):
     hsv_augs = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain]  # random gains
     hsv_augs *= np.random.randint(0, 2, 3)  # random selection of h, s, v
-    hsv_augs = hsv_augs.astype(np.int16)
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+    hsv_augs = hsv_augs.astype(np.float32)
 
-    img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 180
-    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, 255)
-    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, 255)
+    # img is BGR float32 in [0,1]; for float input, OpenCV uses:
+    # H in [0,360), S in [0,1], V in [0,1]
+    img_hsv = cv2.cvtColor(img / 255.0, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-    cv2.cvtColor(img_hsv.astype(img.dtype), cv2.COLOR_HSV2BGR, dst=img)  # no return needed
+    img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 360.0
+    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + (hsv_augs[1] / 255.0), 0.0, 1.0)
+    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + (hsv_augs[2] / 255.0), 0.0, 1.0)
+
+    img[:] = 255.0 * cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
 
 
 def get_aug_params(value, center=0):
@@ -122,13 +125,14 @@ def random_affine(
 ):
     M, scale = get_affine_matrix(target_size, degrees, translate, scales, shear)
 
-    img = cv2.warpAffine(img, M, dsize=target_size, borderValue=(114, 114, 114))
+    img = cv2.warpAffine(img, M, dsize=target_size, borderValue=(114.0, 114.0, 114.0))
 
     # Transform label coordinates
     if len(targets) > 0:
         targets = apply_affine_to_bboxes(targets, target_size, M, scale)
 
     return img, targets
+
 
 
 def _mirror(image, boxes, prob=0.5):
@@ -141,21 +145,22 @@ def _mirror(image, boxes, prob=0.5):
 
 def preproc(img, input_size, swap=(2, 0, 1)):
     if len(img.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.uint8) * 114
+        padded_img = np.ones((input_size[0], input_size[1], 3), dtype=np.float32) * 114.0
     else:
-        padded_img = np.ones(input_size, dtype=np.uint8) * 114
+        padded_img = np.ones(input_size, dtype=np.float32) * 114.0
 
     r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
     resized_img = cv2.resize(
         img,
         (int(img.shape[1] * r), int(img.shape[0] * r)),
         interpolation=cv2.INTER_LINEAR,
-    ).astype(np.uint8)
+    )
     padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
 
     padded_img = padded_img.transpose(swap)
     padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
     return padded_img, r
+
 
 
 class TrainTransform:
@@ -236,8 +241,5 @@ class ValTransform:
     def __call__(self, img, res, input_size):
         img, _ = preproc(img, input_size, self.swap)
         if self.legacy:
-            img = img[::-1, :, :].copy()
-            img /= 255.0
-            img -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
-            img /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
+            raise NotImplementedError("Legacy preprocessing is not supported.")
         return img, np.zeros((1, 5))

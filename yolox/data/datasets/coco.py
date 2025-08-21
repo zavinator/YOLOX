@@ -10,6 +10,7 @@ from pycocotools.coco import COCO
 
 from ..dataloading import get_yolox_datadir
 from .datasets_wrapper import CacheDataset, cache_read_img
+from yolox.utils import image
 
 
 def remove_useless_info(coco):
@@ -137,7 +138,22 @@ class COCODataset(CacheDataset):
             img,
             (int(img.shape[1] * r), int(img.shape[0] * r)),
             interpolation=cv2.INTER_LINEAR,
-        ).astype(np.uint8)
+        )
+
+        # Ensure BGR after resize (convert grayscale if needed)
+        if resized_img.ndim == 2:
+            resized_img = cv2.cvtColor(resized_img, cv2.COLOR_GRAY2BGR)
+        elif resized_img.ndim == 3 and resized_img.shape[2] == 1:
+            resized_img = cv2.cvtColor(resized_img, cv2.COLOR_GRAY2BGR)
+
+        # Convert to float32 in [0, 255]
+        if resized_img.dtype == np.uint8:
+            resized_img = resized_img.astype(np.float32)
+        elif resized_img.dtype == np.uint16:
+            resized_img = resized_img.astype(np.float32) * (255.0 / np.iinfo(np.uint16).max)
+        else:
+            raise ValueError(f"Unsupported image dtype: {resized_img.dtype}. Expected uint8 or uint16.")
+
         return resized_img
 
     def load_image(self, index):
@@ -145,7 +161,7 @@ class COCODataset(CacheDataset):
 
         img_file = os.path.join(self.data_dir, self.name, file_name)
 
-        img = cv2.imread(img_file)
+        img = image.read(img_file)
         assert img is not None, f"file named {img_file} not found"
 
         return img

@@ -542,7 +542,7 @@ class YOLOXHead(nn.Module):
         return anchor_filter, geometry_relation
 
     def simota_matching(self, cost, pair_wise_ious, gt_classes, num_gt, fg_mask):
-        matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
+        matching_matrix = torch.zeros_like(cost, dtype=torch.float32)
 
         n_candidate_k = min(10, pair_wise_ious.size(1))
         topk_ious, _ = torch.topk(pair_wise_ious, n_candidate_k, dim=1)
@@ -615,7 +615,7 @@ class YOLOXHead(nn.Module):
 
         nlabel = (labels.sum(dim=2) > 0).sum(dim=1)  # number of objects
         for batch_idx, (img, num_gt, label) in enumerate(zip(imgs, nlabel, labels)):
-            img = imgs[batch_idx].permute(1, 2, 0).to(torch.uint8)
+            img = imgs[batch_idx].permute(1, 2, 0).to(torch.float32)
             num_gt = int(num_gt)
             if num_gt == 0:
                 fg_mask = outputs.new_zeros(total_num_anchors).bool()
