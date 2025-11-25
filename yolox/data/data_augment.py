@@ -34,6 +34,17 @@ def augment_hsv(img, hgain=5, sgain=30, vgain=30):
     img[:] = 255.0 * cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
 
 
+def augment_brightness_contrast(img, bgain=32, cgain=0.2):
+    """Random brightness/contrast: (brightness + pixel) * contrast."""
+    # bgain in [0,255] space, cgain is multiplicative factor
+    b_delta = np.random.uniform(-bgain, bgain)
+    c_delta = np.random.uniform(1.0 - cgain, 1.0 + cgain)
+
+    img_bc = (img.astype(np.float32) + b_delta) * c_delta
+    np.clip(img_bc, 0.0, 255.0, out=img_bc)
+    img[:] = img_bc.astype(np.float32)
+
+
 def get_aug_params(value, center=0):
     if isinstance(value, float):
         return random.uniform(center - value, center + value)
@@ -164,10 +175,21 @@ def preproc(img, input_size, swap=(2, 0, 1)):
 
 
 class TrainTransform:
-    def __init__(self, max_labels=50, flip_prob=0.5, hsv_prob=1.0):
+    def __init__(
+        self,
+        max_labels=50,
+        flip_prob=0.5,
+        hsv_prob=1.0,
+        bc_prob=1.0,
+        bgain=32,
+        cgain=0.2,
+    ):
         self.max_labels = max_labels
         self.flip_prob = flip_prob
         self.hsv_prob = hsv_prob
+        self.bc_prob = bc_prob
+        self.bgain = bgain
+        self.cgain = cgain
 
     def __call__(self, image, targets, input_dim):
         boxes = targets[:, :4].copy()
@@ -187,6 +209,10 @@ class TrainTransform:
 
         if random.random() < self.hsv_prob:
             augment_hsv(image)
+
+        if random.random() < self.bc_prob:
+            augment_brightness_contrast(image, self.bgain, self.cgain)
+
         image_t, boxes = _mirror(image, boxes, self.flip_prob)
         height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim)

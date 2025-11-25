@@ -53,6 +53,11 @@ class Exp(BaseExp):
         self.mixup_prob = 1.0
         # prob of applying hsv aug
         self.hsv_prob = 1.0
+        # prob of applying brightness/contrast aug
+        self.bc_prob = 1.0
+        # brightness and contrast ranges
+        self.bgain = 32
+        self.cgain = 0.2
         # prob of applying flip aug
         self.flip_prob = 0.5
         # rotation angle range, for example, if set to 2, the true range is (-2, 2)
@@ -146,7 +151,10 @@ class Exp(BaseExp):
             preproc=TrainTransform(
                 max_labels=50,
                 flip_prob=self.flip_prob,
-                hsv_prob=self.hsv_prob
+                hsv_prob=self.hsv_prob,
+                bc_prob=self.bc_prob,
+                bgain=self.bgain,
+                cgain=self.cgain,
             ),
             cache=cache,
             cache_type=cache_type,
@@ -187,7 +195,11 @@ class Exp(BaseExp):
             preproc=TrainTransform(
                 max_labels=120,
                 flip_prob=self.flip_prob,
-                hsv_prob=self.hsv_prob),
+                hsv_prob=self.hsv_prob,
+                bc_prob=self.bc_prob,
+                bgain=self.bgain,
+                cgain=self.cgain,
+            ),
             degrees=self.degrees,
             translate=self.translate,
             mosaic_scale=self.mosaic_scale,
