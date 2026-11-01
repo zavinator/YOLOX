@@ -43,7 +43,16 @@ def augment_hsv(img, hgain=5, sgain=30, vgain=30):
 
 
 def augment_brightness_contrast(img, bgain=32, cgain=0.2):
-    """Random brightness/contrast: (brightness + pixel) * contrast."""
+    """Apply (pixel + brightness) * contrast in place for uint8/uint16 images.
+
+    With equal probability, multiply or divide by a factor sampled uniformly
+    from [1, 1 + cgain]. cgain=2 gives contrast in [1/3, 3]; cgain=0 is neutral.
+    cgain must be finite and non-negative. Invalid values raise ValueError
+    before the image is modified.
+    """
+    if not math.isfinite(cgain) or cgain < 0.0:
+        raise ValueError("cgain must be finite and non-negative")
+
     dtype = img.dtype
     max_val = 255
     gain_scale = 1
@@ -52,7 +61,10 @@ def augment_brightness_contrast(img, bgain=32, cgain=0.2):
         gain_scale = U8_TO_U16_SCALE
     
     b_delta = np.random.uniform(-bgain, bgain) * gain_scale
-    c_delta = np.random.uniform(1.0 - cgain, 1.0 + cgain)
+    decrease_contrast = np.random.random() < 0.5
+    c_delta = np.random.uniform(1.0, 1.0 + cgain)
+    if decrease_contrast:
+        c_delta = 1.0 / c_delta
 
     img_aug = (img.astype(np.float32) + b_delta) * c_delta
     np.clip(img_aug, 0.0, max_val, out=img_aug)
