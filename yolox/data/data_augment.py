@@ -218,7 +218,12 @@ class TrainTransform:
         bc_prob=1.0,
         bgain=32,
         cgain=0.2,
+        negative_prob=0.0,
     ):
+        if not 0.0 <= negative_prob <= 1.0:
+            raise ValueError("negative_prob must be between 0 and 1")
+
+        self.negative_prob = negative_prob
         self.max_labels = max_labels
         self.flip_prob = flip_prob
         self.hsv_prob = hsv_prob
@@ -227,6 +232,11 @@ class TrainTransform:
         self.cgain = cgain
 
     def __call__(self, image, targets, input_dim):
+        # Invert before copying the fallback image, including images without boxes.
+        # Do not consume random numbers when disabled. Preserve uint8/uint16 precision.
+        if self.negative_prob > 0.0 and random.random() < self.negative_prob:
+            image = np.iinfo(image.dtype).max - image
+
         boxes = targets[:, :4].copy()
         labels = targets[:, 4].copy()
         if len(boxes) == 0:

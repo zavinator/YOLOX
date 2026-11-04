@@ -9,6 +9,15 @@ This repo is an implementation of PyTorch version YOLOX, there is also a [MegEng
 
 <img src="assets/git_fig.png" width="1000" >
 
+## Negative augmentation (this fork)
+
+Set `self.negative_prob = 0.5` in your experiment to invert image intensities
+with 50% probability during training. The default is `0.0` (disabled).
+The transform uses `255 - pixel` for uint8 and `65535 - pixel` for uint16,
+before HSV and brightness/contrast augmentation, without changing annotations.
+It also applies to images without boxes and after mosaic/mixup; validation is unchanged.
+With the standard training CLI, append `negative_prob 0.5` to override the experiment.
+
 ## Updates!!
 * 【2023/02/28】 We support assignment visualization tool, see doc [here](./docs/assignment_visualization.md).
 * 【2022/04/14】 We support jit compile op.

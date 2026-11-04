@@ -55,6 +55,8 @@ class Exp(BaseExp):
         self.hsv_prob = 1.0
         # prob of applying brightness/contrast aug
         self.bc_prob = 1.0
+        # prob of inverting intensities (uint8: 255 - pixel, uint16: 65535 - pixel)
+        self.negative_prob = 0.0
         # brightness and contrast ranges
         self.bgain = 32
         self.cgain = 0.2
@@ -155,6 +157,7 @@ class Exp(BaseExp):
                 bc_prob=self.bc_prob,
                 bgain=self.bgain,
                 cgain=self.cgain,
+                negative_prob=self.negative_prob,
             ),
             cache=cache,
             cache_type=cache_type,
@@ -199,6 +202,7 @@ class Exp(BaseExp):
                 bc_prob=self.bc_prob,
                 bgain=self.bgain,
                 cgain=self.cgain,
+                negative_prob=self.negative_prob,
             ),
             degrees=self.degrees,
             translate=self.translate,
